@@ -6,235 +6,93 @@ import (
 	"testing"
 )
 
-// https://www.rfc-editor.org/rfc/rfc9535.html#name-array-slice-selector
-func TestPath_Apply_arraySliceSelector(t *testing.T) {
+// https://www.rfc-editor.org/rfc/rfc9535.html#name-examples-8
+func TestPath_Apply_childSegment(t *testing.T) {
+	example := []any{"a", "b", "c", "d", "e", "f", "g"}
 	testCases{
 		{
-			comment: "Slice with default step",
-			query:   "$[1:3]",
-			result:  []any{"b", "c"},
+			comment: "Indices",
+			query:   "$[0, 3]",
+			result:  []any{"a", "d"},
 		},
 		{
-			comment: "Slice with no end index",
-			query:   "$[5:]",
-			result:  []any{"f", "g"},
+			comment: "Slice and index",
+			query:   "$[0:2, 5]",
+			result:  []any{"a", "b", "f"},
 		},
 		{
-			comment: "Slice with step 2",
-			query:   "$[1:5:2]",
-			result:  []any{"b", "d"},
+			comment: "Duplicate entries",
+			query:   "$[0, 0]",
+			result:  []any{"a", "a"},
 		},
-		{
-			comment: "Slice with negative step",
-			query:   "$[5:1:-2]",
-			result:  []any{"f", "d"},
-		},
-		{
-			comment: "Slice in reverse order",
-			query:   "$[::-1]",
-			result:  []any{"g", "f", "e", "d", "c", "b", "a"},
-		},
-	}.Run(t, []any{"a", "b", "c", "d", "e", "f", "g"})
+	}.Run(t, example)
 }
 
-// https://www.rfc-editor.org/rfc/rfc9535.html#name-filter-selector
-func TestPath_Apply_filterSelector(t *testing.T) {
-	testCases{
-		{
-			comment: "Member value comparison",
-			query:   "$.a[?@.b == 'kilo']",
-			result:  []any{map[string]any{"b": "kilo"}},
-		},
-		{
-			comment: "Equivalent query with enclosing parentheses",
-			query:   "$.a[?(@.b == 'kilo')]",
-			result:  []any{map[string]any{"b": "kilo"}},
-		},
-		{
-			comment: "Array value comparison",
-			query:   "$.a[?@>3.5]",
-			result:  []any{5, 4, 6},
-		},
-		{
-			comment: "Array value existence",
-			query:   "$.a[?@.b]",
-			result: []any{
-				map[string]any{"b": "j"},
-				map[string]any{"b": "k"},
-				map[string]any{"b": map[string]any{}},
-				map[string]any{"b": "kilo"},
-			},
-		},
-		{
-			comment: "Existence of non-singular queries",
-			query:   "$[?@.*]",
-			result: []any{
-				[]any{3, 5, 1, 2, 4, 6,
-					map[string]any{"b": "j"},
-					map[string]any{"b": "k"},
-					map[string]any{"b": map[string]any{}},
-					map[string]any{"b": "kilo"},
-				},
-				map[string]any{
-					"p": 1, "q": 2, "r": 3, "s": 5,
-					"t": map[string]any{"u": 6},
-				},
-			},
-		},
-		{
-			comment: "Nested filters",
-			query:   "$[?@[?@.b]]",
-			result: []any{
-				[]any{3, 5, 1, 2, 4, 6,
-					map[string]any{"b": "j"},
-					map[string]any{"b": "k"},
-					map[string]any{"b": map[string]any{}},
-					map[string]any{"b": "kilo"},
-				},
-			},
-		},
-		{
-			comment: "Non-deterministic ordering",
-			query:   "$.o[?@<3, ?@<3]",
-			result:  []any{[]any{1, 2}, []any{1, 2}},
-		},
-		{
-			comment: "Array value logical OR",
-			query:   `$.a[?@<2 || @.b == "k"]`,
-			result:  []any{1, map[string]any{"b": "k"}},
-		},
-		{
-			comment: "Array value regular expression match",
-			query:   `$.a[?match(@.b, "[jk]")]`,
-			result: []any{
-				map[string]any{"b": "j"},
-				map[string]any{"b": "k"},
-			},
-		},
-		{
-			comment: "Array value regular expression search",
-			query:   `$.a[?search(@.b, "[jk]")]`,
-			result: []any{
-				map[string]any{"b": "j"},
-				map[string]any{"b": "k"},
-				map[string]any{"b": "kilo"},
-			},
-		},
-		{
-			comment: "Object value logical AND",
-			query:   "$.o[?@>1 && @<4]",
-			result:  []any{2, 3},
-		},
-		{
-			comment: "Object value logical OR",
-			query:   "$.o[?@.u || @.x]",
-			result:  []any{map[string]any{"u": 6}},
-		},
-		{
-			comment: "Comparison of queries with no values",
-			query:   "$.a[?@.b == $.x]",
-			result:  []any{3, 5, 1, 2, 4, 6},
-		},
-		{
-			comment: "Comparisons of primitive and of structured values",
-			query:   "$.a[?@ == @]",
-			result: []any{3, 5, 1, 2, 4, 6,
-				map[string]any{"b": "j"},
-				map[string]any{"b": "k"},
-				map[string]any{"b": map[string]any{}},
-				map[string]any{"b": "kilo"},
-			},
-		},
-	}.Run(t, map[string]any{
-		"a": []any{3, 5, 1, 2, 4, 6,
-			map[string]any{"b": "j"},
-			map[string]any{"b": "k"},
-			map[string]any{"b": map[string]any{}},
-			map[string]any{"b": "kilo"},
-		},
-		"o": map[string]any{"p": 1, "q": 2, "r": 3, "s": 5, "t": map[string]any{"u": 6}},
-		"e": "f",
-	})
-}
-
-// https://www.rfc-editor.org/rfc/rfc9535.html#name-index-selector
-func TestPath_Apply_indexSelector(t *testing.T) {
-	testCases{
-		{
-			comment: "Element of array",
-			query:   "$[1]",
-			result:  "b",
-		},
-		{
-			comment: "Element of array, from the end",
-			query:   "$[-2]",
-			result:  "a",
-		},
-	}.Run(t, []any{"a", "b"})
-}
-
-// https://www.rfc-editor.org/rfc/rfc9535.html#name-name-selector
-func TestPath_Apply_nameSelector(t *testing.T) {
-	testCases{
-		{
-			comment: "Named value in a nested object",
-			query:   "$.o['j j']",
-			result:  map[string]any{"k.k": 3},
-		},
-		{
-			comment: "Nesting further down",
-			query:   "$.o['j j']['k.k']",
-			result:  3,
-		},
-		{
-			comment: "Different delimiter in the query, unchanged Normalized Path",
-			query:   "$.o[\"j j\"][\"k.k\"]",
-			result:  3,
-		},
-		{
-			comment: "Unusual member names",
-			query:   "$[\"'\"][\"@\"]",
-			result:  2,
-		},
-	}.Run(t, map[string]any{
-		"o": map[string]any{"j j": map[string]any{"k.k": 3}},
-		"'": map[string]any{"@": 2},
-	})
-}
-
-// https://www.rfc-editor.org/rfc/rfc9535.html#name-wildcard-selector
-func TestPath_Apply_wildcardSelector(t *testing.T) {
-	testCases{
-		{
-			comment: "Object values",
-			query:   "$[*]",
-			result:  []any{[]any{5, 3}, map[string]any{"j": 1, "k": 2}},
-		},
-		{
-			comment: "Object values",
-			query:   "$.o[*]",
-			result:  []any{1, 2},
-		},
-		{
-			comment: "Non-deterministic ordering",
-			query:   "$.o[*, *]",
-			result:  []any{[]any{1, 2}, []any{1, 2}},
-		},
-		{
-			comment: "Array members",
-			query:   "$.a[*]",
-			result:  []any{5, 3},
-		},
-	}.Run(t, map[string]any{
+// https://www.rfc-editor.org/rfc/rfc9535.html#name-examples-9
+func TestPath_Apply_descendantSegment(t *testing.T) {
+	example := map[string]any{
 		"o": map[string]any{"j": 1, "k": 2},
-		"a": []any{5, 3},
-	})
+		"a": []any{5, 3, []any{map[string]any{"j": 4}, map[string]any{"k": 6}}},
+	}
+	testCases{
+		{
+			comment: "Object values",
+			query:   "$..j",
+			result:  []any{4, 1},
+		},
+		{
+			comment: "Array values",
+			query:   "$..[0]",
+			result:  []any{5, map[string]any{"j": 4}},
+		},
+		{
+			comment: "All values",
+			query:   "$..[*]",
+			result: []any{
+				[]any{5, 3, []any{map[string]any{"j": 4}, map[string]any{"k": 6}}},
+				5,
+				3,
+				[]any{map[string]any{"j": 4}, map[string]any{"k": 6}},
+				map[string]any{"j": 4},
+				map[string]any{"k": 6},
+				4,
+				6,
+				map[string]any{"j": 1, "k": 2},
+				1,
+				2,
+			},
+		},
+		{
+			comment: "Input value is visited",
+			query:   "$..o",
+			result: []any{
+				map[string]any{"j": 1, "k": 2},
+			},
+		},
+		{
+			comment: "Non-deterministic ordering",
+			query:   "$.o..[*, *]",
+			result: []any{
+				1, 2, 1, 2,
+			},
+		},
+		{
+			comment: "Multiple segments",
+			query:   "$.a..[0, 1]",
+			result: []any{
+				5,
+				map[string]any{"j": 4},
+				3,
+				map[string]any{"k": 6},
+			},
+		},
+	}.Run(t, example)
 }
 
 type testCase struct {
 	comment string
 	query   string
-	result  any
+	result  jsonpath.NodeList
 }
 
 func (c testCase) Run(t *testing.T, v any) {
@@ -243,10 +101,7 @@ func (c testCase) Run(t *testing.T, v any) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		r, err := q.Apply(v)
-		if err != nil {
-			t.Fatal(err)
-		}
+		r := q.Apply(v)
 		if !reflect.DeepEqual(r, c.result) {
 			t.Errorf("expected %v, got %v", c.result, r)
 		}

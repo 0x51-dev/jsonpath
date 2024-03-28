@@ -1,11 +1,14 @@
-package jsonpath
+package cmp_test
 
 import (
 	"fmt"
+	"github.com/0x51-dev/jsonpath"
+	"github.com/0x51-dev/jsonpath/cmp"
 	"strings"
 	"testing"
 )
 
+// https://www.rfc-editor.org/rfc/rfc9535.html#name-examples-6
 func TestComparisons(t *testing.T) {
 	var source = map[string]any{
 		"obj": map[string]any{"x": "y"},
@@ -173,11 +176,11 @@ func TestComparisons(t *testing.T) {
 		var name strings.Builder
 		if test.pathA != "" {
 			name.WriteString(test.pathA)
-			q, err := New(test.pathA)
+			q, err := jsonpath.New(test.pathA)
 			if err != nil {
 				t.Fatalf("error parsing %q: %v", test.pathA, err)
 			}
-			valueA, err := q.Apply(source)
+			valueA := []any(q.Apply(source))
 			if err != nil {
 				t.Fatalf("error applying %q: %v", test.pathA, err)
 			}
@@ -188,11 +191,11 @@ func TestComparisons(t *testing.T) {
 		name.WriteString(fmt.Sprintf(" %v ", test.op))
 		if test.pathB != "" {
 			name.WriteString(test.pathB)
-			q, err := New(test.pathB)
+			q, err := jsonpath.New(test.pathB)
 			if err != nil {
 				t.Fatalf("error parsing %q: %v", test.pathB, err)
 			}
-			valueB, err := q.Apply(source)
+			valueB := []any(q.Apply(source))
 			if err != nil {
 				t.Fatalf("error applying %q: %v", test.pathB, err)
 			}
@@ -201,8 +204,7 @@ func TestComparisons(t *testing.T) {
 			name.WriteString(fmt.Sprintf("%v", test.valueB))
 		}
 		t.Run(name.String(), func(t *testing.T) {
-			ctx := newContext(source)
-			if err := ctx.compare(test.valueA, test.valueB, test.op); (err == nil) != test.result {
+			if err := cmp.Compare(test.valueA, test.valueB, test.op); (err == nil) != test.result {
 				t.Errorf("compare(%v, %v, %q) = %v; want %v", test.valueA, test.valueB, test.op, err, test.result)
 			}
 		})

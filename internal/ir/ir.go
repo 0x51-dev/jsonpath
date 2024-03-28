@@ -253,6 +253,49 @@ func (s ComparisonExpr) String() string {
 
 func (s ComparisonExpr) basicExpr() {}
 
+type DescendantSegment struct {
+	Segment Segment
+}
+
+func ParseDescendantSegment(n *parser.Node) (*DescendantSegment, error) {
+	name := "DescendantSegment"
+	if n.Name != name {
+		return nil, NewInvalidNodeStructureError(name, n)
+	}
+	switch n := n.Children()[0]; n.Name {
+	case "BracketedSelection":
+		segment, err := ParseBracketedSelection(n)
+		if err != nil {
+			return nil, err
+		}
+		return &DescendantSegment{
+			Segment: segment,
+		}, nil
+	case "WildcardSelector":
+		return &DescendantSegment{
+			Segment: new(WildcardSelector),
+		}, nil
+	case "MemberNameShorthand":
+		return &DescendantSegment{
+			Segment: &MemberNameShorthand{
+				Name: n.Value(),
+			},
+		}, nil
+	default:
+		return nil, NewInvalidNodeStructureError(name, n)
+	}
+}
+
+func (s DescendantSegment) String() string {
+	switch s := s.Segment.(type) {
+	case *MemberNameShorthand:
+		return fmt.Sprintf("..%s", s.Name)
+	}
+	return fmt.Sprintf("..%s", s.Segment)
+}
+
+func (s DescendantSegment) segment() {}
+
 type False struct{}
 
 func (s False) String() string {
@@ -788,6 +831,8 @@ func ParseSegment(n *parser.Node) (Segment, error) {
 	switch n := n.Children()[0]; n.Name {
 	case "ChildSegment":
 		return ParseChildSegment(n)
+	case "DescendantSegment":
+		return ParseDescendantSegment(n)
 	default:
 		return nil, NewInvalidNodeStructureError(name, n)
 	}
@@ -1032,5 +1077,7 @@ func (s WildcardSelector) String() string {
 }
 
 func (s WildcardSelector) childSegment() {}
-func (s WildcardSelector) segment()      {}
-func (s WildcardSelector) selector()     {}
+
+func (s WildcardSelector) segment() {}
+
+func (s WildcardSelector) selector() {}

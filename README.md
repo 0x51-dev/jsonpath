@@ -18,8 +18,8 @@ JSONPath defines a string syntax for selecting and extracting JSON (RFC 8259) va
     - [ ] `search()`
     - [ ] `value()`
 - Segments
-    - [ ] Child Segments
-    - [ ] Descendant Segments
+    - [x] Child Segments
+    - [x] Descendant Segments
 
 ## References
 
