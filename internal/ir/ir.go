@@ -1,7 +1,6 @@
 package ir
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/0x51-dev/upeg/parser"
 	"strconv"
@@ -13,22 +12,6 @@ func parseInt(n *parser.Node) (int, error) {
 		return 0, NewInvalidNodeStructureError("Int", n)
 	}
 	return strconv.Atoi(n.Value())
-}
-
-func parseString(n *parser.Node) (string, error) {
-	cs := n.Children()
-	if len(cs) == 0 {
-		return "", nil
-	}
-	var str string
-	for _, n := range cs {
-		if v := n.Value(); v != "" {
-			str += v
-			continue
-		}
-		return "", fmt.Errorf("TODO: parseString unsupported: %v", n)
-	}
-	return str, nil
 }
 
 type AbsSingularQuery struct {
@@ -77,33 +60,6 @@ func (s AbsSingularQuery) Value(ref any) (any, error) {
 }
 
 func (s AbsSingularQuery) comparable() {}
-
-type Argument interface {
-	fmt.Stringer
-
-	argument()
-}
-
-func ParseFunctionArgument(n *parser.Node) (Argument, error) {
-	name := "FunctionArgument"
-	if n.Name != name {
-		return nil, NewInvalidNodeStructureError(name, n)
-	}
-	switch n := n.Children()[0]; n.Name {
-	case "Literal":
-		return ParseLiteral(n)
-	case "RelQuery":
-		return ParseRelQuery(n)
-	case "JsonpathQuery":
-		return ParseJSONPathQuery(n)
-	case "LogicalExpr":
-		return ParseLogicalExpr(n)
-	case "FunctionExpr":
-		return ParseFunctionExpr(n)
-	default:
-		return nil, NewInvalidNodeStructureError(name, n)
-	}
-}
 
 type BasicExpr interface {
 	fmt.Stringer
@@ -235,10 +191,16 @@ func ParseComparisonExpr(n *parser.Node) (*ComparisonExpr, error) {
 	if err != nil {
 		return nil, err
 	}
+	if typ := typeOfArgument(left); typ != valueType && typ != unknownType {
+		return nil, fmt.Errorf("invalid arg type %s for %s", left, name)
+	}
 	op := cs[1].Value()
 	right, err := ParseComparable(cs[2])
 	if err != nil {
 		return nil, err
+	}
+	if typ := typeOfArgument(left); typ != valueType && typ != unknownType {
+		return nil, fmt.Errorf("invalid arg type %s for %s", left, name)
 	}
 	return &ComparisonExpr{
 		Left:  left,
@@ -296,22 +258,6 @@ func (s DescendantSegment) String() string {
 
 func (s DescendantSegment) segment() {}
 
-type False struct{}
-
-func (s False) String() string {
-	return "false"
-}
-
-func (s False) Value(_ any) (any, error) {
-	return false, nil
-}
-
-func (s False) argument() {}
-
-func (s False) comparable() {}
-
-func (s False) literal() {}
-
 type FilterSelector struct {
 	LogicalExpr *LogicalExpr
 }
@@ -336,9 +282,36 @@ func (s FilterSelector) String() string {
 
 func (s FilterSelector) selector() {}
 
+type FunctionArgument interface {
+	fmt.Stringer
+
+	argument()
+}
+
+func ParseFunctionArgument(n *parser.Node) (FunctionArgument, error) {
+	name := "FunctionArgument"
+	if n.Name != name {
+		return nil, NewInvalidNodeStructureError(name, n)
+	}
+	switch n := n.Children()[0]; n.Name {
+	case "Literal":
+		return ParseLiteral(n)
+	case "RelQuery":
+		return ParseRelQuery(n)
+	case "JsonpathQuery":
+		return ParseJSONPathQuery(n)
+	case "LogicalExpr":
+		return ParseLogicalExpr(n)
+	case "FunctionExpr":
+		return ParseFunctionExpr(n)
+	default:
+		return nil, NewInvalidNodeStructureError(name, n)
+	}
+}
+
 type FunctionExpr struct {
 	Name      string
-	Arguments []Argument
+	Arguments []FunctionArgument
 }
 
 func ParseFunctionExpr(n *parser.Node) (*FunctionExpr, error) {
@@ -348,7 +321,7 @@ func ParseFunctionExpr(n *parser.Node) (*FunctionExpr, error) {
 	}
 	cs := n.Children()
 	functionName := cs[0].Value()
-	var args []Argument
+	var args []FunctionArgument
 	for _, n := range cs[1:] {
 		if n.Name != "FunctionArgument" {
 			return nil, NewInvalidNodeStructureError(name, n)
@@ -359,6 +332,40 @@ func ParseFunctionExpr(n *parser.Node) (*FunctionExpr, error) {
 		}
 		args = append(args, arg)
 	}
+	switch functionName {
+	case "length":
+		if l := len(args); l != 1 {
+			return nil, fmt.Errorf("invalid number of arguments (%d) for %s", l, functionName)
+		}
+		if arg := args[0]; typeOfArgument(arg) != valueType {
+			return nil, fmt.Errorf("invalid arg type %s for %s", arg, functionName)
+		}
+	case "count":
+		if l := len(args); l != 1 {
+			return nil, fmt.Errorf("invalid number of arguments (%d) for %s", l, functionName)
+		}
+		if arg := args[0]; typeOfArgument(arg) != nodesType {
+			return nil, fmt.Errorf("invalid arg type %s for %s", arg, functionName)
+		}
+	case "value":
+		if l := len(args); l != 1 {
+			return nil, fmt.Errorf("invalid number of arguments (%d) for %s", l, functionName)
+		}
+		if typ := typeOfArgument(args[0]); typ != nodesType && typ != valueType {
+			return nil, fmt.Errorf("invalid arg type %s for %s", args[0], functionName)
+		}
+	case "match", "search":
+		if l := len(args); l != 2 {
+			return nil, fmt.Errorf("invalid number of arguments (%d) for %s", l, functionName)
+		}
+		if arg := args[0]; typeOfArgument(arg) != valueType {
+			return nil, fmt.Errorf("invalid arg type %s for %s", arg, functionName)
+		}
+		if arg := args[1]; typeOfArgument(arg) != valueType {
+			return nil, fmt.Errorf("invalid arg type %s for %s", arg, functionName)
+		}
+	}
+
 	return &FunctionExpr{
 		Name:      functionName,
 		Arguments: args,
@@ -374,7 +381,7 @@ func (s FunctionExpr) String() string {
 }
 
 func (s FunctionExpr) Value(ref any) (any, error) {
-	panic("implement me: func")
+	panic("should be implemented by the caller of this function")
 }
 
 func (s FunctionExpr) argument() {}
@@ -477,44 +484,6 @@ func (q JSONPathQuery) String() string {
 func (q JSONPathQuery) argument() {}
 
 func (q JSONPathQuery) testExpr() {}
-
-type Literal interface {
-	Argument
-	Comparable
-
-	literal()
-}
-
-func ParseLiteral(n *parser.Node) (Literal, error) {
-	name := "Literal"
-	if n.Name != name {
-		return nil, NewInvalidNodeStructureError(name, n)
-	}
-	switch n := n.Children()[0]; n.Name {
-	case "Number":
-		var number string
-		for _, n := range n.Children() {
-			number += n.Value()
-		}
-		lit := Number(number)
-		return &lit, nil
-	case "StringLiteral":
-		s, err := parseString(n)
-		if err != nil {
-			return nil, err
-		}
-		lit := StringLiteral(s)
-		return &lit, nil
-	case "True":
-		return new(True), nil
-	case "False":
-		return new(False), nil
-	case "Null":
-		return new(Null), nil
-	default:
-		return nil, NewInvalidNodeStructureError(name, n)
-	}
-}
 
 type LogicalAndExpr struct {
 	Expressions []BasicExpr
@@ -641,12 +610,12 @@ func ParseNameSelector(n *parser.Node) (*NameSelector, error) {
 	if n.Name != name {
 		return nil, NewInvalidNodeStructureError(name, n)
 	}
-	name, err := parseString(n.Children()[0])
+	str, err := ParseStringLiteral(n.Children()[0])
 	if err != nil {
 		return nil, err
 	}
 	return &NameSelector{
-		Name: name,
+		Name: string(*str),
 	}, nil
 }
 
@@ -656,42 +625,6 @@ func (s NameSelector) String() string {
 }
 
 func (s NameSelector) selector() {}
-
-type Null struct{}
-
-func (s Null) String() string {
-	return "null"
-}
-
-func (s Null) Value(_ any) (any, error) {
-	return nil, nil
-}
-
-func (s Null) argument() {}
-
-func (s Null) comparable() {}
-
-func (s Null) literal() {}
-
-type Number json.Number
-
-func (s Number) String() string {
-	return string(s)
-}
-
-func (s Number) Value(_ any) (any, error) {
-	jn := json.Number(s)
-	if strings.Contains(string(jn), ".") {
-		return jn.Float64()
-	}
-	return jn.Int64()
-}
-
-func (s Number) argument() {}
-
-func (s Number) comparable() {}
-
-func (s Number) literal() {}
 
 type ParenExpr struct {
 	Negation    bool
@@ -973,22 +906,6 @@ func (s SliceSelector) String() string {
 
 func (s SliceSelector) selector() {}
 
-type StringLiteral string
-
-func (s StringLiteral) String() string {
-	return fmt.Sprintf("'%s'", string(s))
-}
-
-func (s StringLiteral) Value(_ any) (any, error) {
-	return string(s), nil
-}
-
-func (s StringLiteral) argument() {}
-
-func (s StringLiteral) comparable() {}
-
-func (s StringLiteral) literal() {}
-
 type TestExpr struct {
 	Negation bool
 	TestExpr TestExpression
@@ -1008,6 +925,9 @@ func ParseTestExpr(n *parser.Node) (*TestExpr, error) {
 			q, err := ParseFunctionExpr(n)
 			if err != nil {
 				return nil, err
+			}
+			if typ := typeOfArgument(q); typ != logicalType {
+				return nil, fmt.Errorf("invalid arg type %s for %s", q, name)
 			}
 			return &TestExpr{
 				Negation: negation,
@@ -1054,22 +974,6 @@ type TestExpression interface {
 	testExpr()
 }
 
-type True struct{}
-
-func (s True) String() string {
-	return "true"
-}
-
-func (s True) Value(_ any) (any, error) {
-	return true, nil
-}
-
-func (s True) argument() {}
-
-func (s True) comparable() {}
-
-func (s True) literal() {}
-
 type WildcardSelector struct{}
 
 func (s WildcardSelector) String() string {
@@ -1081,3 +985,50 @@ func (s WildcardSelector) childSegment() {}
 func (s WildcardSelector) segment() {}
 
 func (s WildcardSelector) selector() {}
+
+type argumentType int
+
+const (
+	unknownType argumentType = iota
+	valueType
+	logicalType
+	nodesType
+)
+
+func typeOfArgument(arg any) argumentType {
+	switch arg := arg.(type) {
+	case *JSONPathQuery:
+		for _, segment := range arg.Segments {
+			if typ := typeOfArgument(segment); typ != valueType {
+				return typ
+			}
+		}
+		return valueType
+	case *FunctionExpr:
+		switch arg.Name {
+		case "length", "count", "value":
+			return valueType
+		case "match", "search":
+			return logicalType
+		default:
+			return unknownType
+		}
+	case *WildcardSelector:
+		return nodesType
+	case *DescendantSegment:
+		return typeOfArgument(arg.Segment)
+	case *RelSingularQuery, *AbsSingularQuery, *MemberNameShorthand:
+		return valueType
+	case *RelQuery:
+		for _, segment := range arg.Segments {
+			if typ := typeOfArgument(segment); typ != valueType {
+				return typ
+			}
+		}
+		return valueType
+	case *Boolean, *Null, *Number, *String:
+		return valueType
+	default:
+		panic(fmt.Sprintf("unsupported arg type %T", arg))
+	}
+}

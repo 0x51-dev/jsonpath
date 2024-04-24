@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/0x51-dev/jsonpath/cmp"
 	"github.com/0x51-dev/jsonpath/internal/ir"
-	"regexp"
 	"sort"
 )
 
@@ -88,48 +87,7 @@ func (ctx *context) checkBasicExpr(expr ir.BasicExpr, node any) error {
 		case *ir.JSONPathQuery:
 			panic("not implemented: JSONPathQuery")
 		case *ir.FunctionExpr:
-			switch name := expr.Name; name {
-			case "match", "search":
-				if len(expr.Arguments) != 2 {
-					return fmt.Errorf("invalid number of arguments for match: %d", len(expr.Arguments))
-				}
-				s, ok := expr.Arguments[1].(*ir.StringLiteral)
-				if !ok {
-					return fmt.Errorf("unsupported argument type for match: %T", expr.Arguments[1])
-				}
-				v, err := ctx.value(s, node)
-				if err != nil {
-					return err
-				}
-				r, err := regexp.Compile(v.(string))
-				if err != nil {
-					return err
-				}
-				switch arg := expr.Arguments[0].(type) {
-				case *ir.RelQuery:
-					v := newContext(node).applyPath(
-						&ir.JSONPathQuery{Segments: arg.Segments},
-					)
-					if v == nil || len(v) != 1 {
-						return fmt.Errorf("no matching expression")
-					}
-					s, ok := v[0].(string)
-					if !ok {
-						return fmt.Errorf("unsupported argument type for match: %T", v)
-					}
-					if name == "match" && r.FindString(s) != s {
-						return fmt.Errorf("no matching expression")
-					}
-					if name == "search" && !r.MatchString(s) {
-						return fmt.Errorf("no matching expression")
-					}
-					return nil
-				default:
-					panic("not implemented: match argument type")
-				}
-			default:
-				panic("not implemented: function name")
-			}
+			return ctx.checkFunctionExpr(expr, node)
 		default:
 			return fmt.Errorf("unsupported test expression type: %T", expr)
 		}
@@ -167,6 +125,30 @@ func (ctx *context) value(comp ir.Comparable, node any) (any, error) {
 		return comp.Value(ctx.root)
 	case *ir.RelSingularQuery:
 		return comp.Value(node)
+	case *ir.FunctionExpr:
+		switch comp.Name {
+		case "value":
+			switch arg := comp.Arguments[0].(type) {
+			case *ir.JSONPathQuery:
+				nodeList := ctx.applyPath(arg)
+				if len(nodeList) != 1 {
+					return nil, nil
+				}
+				return nodeList[0], nil
+			case *ir.RelQuery:
+				nodeList := newContext(node).applyPath(&ir.JSONPathQuery{
+					Segments: arg.Segments,
+				})
+				if len(nodeList) != 1 {
+					return nil, nil
+				}
+				return nodeList[0], nil
+			default:
+				panic(fmt.Sprintf("unsupported value arg %T", arg))
+			}
+		default:
+			panic(fmt.Sprintf("unsupported function: %s", comp.Name))
+		}
 	default:
 		return comp.Value(nil)
 	}

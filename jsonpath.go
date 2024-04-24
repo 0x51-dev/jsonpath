@@ -119,7 +119,7 @@ func (ctx *context) applySegment(segment ir.Segment, input NodeList, recursive b
 			)
 		}
 	default:
-		panic(fmt.Sprintf("unsupported child segment type: %T", segment))
+		panic(fmt.Sprintf("unsupported segment type: %T", segment))
 	}
 	return nodeList
 }

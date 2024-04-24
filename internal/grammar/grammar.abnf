@@ -17,15 +17,13 @@ name-selector       = string-literal
 string-literal      = %x22 *double-quoted %x22 /     ; "string"
                       %x27 *single-quoted %x27       ; 'string'
 
-double-quoted       = unescaped /
-                      %x27      /                    ; '
-                      ESC %x22  /                    ; \"
-                      ESC escapable
+double-quoted       = unescaped-dq / ESC escapable-dq
+unescaped-dq        = unescaped / %x27
+escapable-dq        = %x22 / escapable
 
-single-quoted       = unescaped /
-                      %x22      /                    ; "
-                      ESC %x27  /                    ; \'
-                      ESC escapable
+single-quoted       = unescaped-sq / ESC escapable-sq
+unescaped-sq        = unescaped / %x22
+escapable-sq        = %x27 / escapable
 
 ESC                 = %x5C                           ; \ backslash
 
@@ -50,7 +48,7 @@ escapable           = %x62 / ; b BS backspace U+0008
 
 hexchar             = non-surrogate /
                       (high-surrogate "\" %x75 low-surrogate)
-non-surrogate       = ((DIGIT / "A"/"B"/"C" / "E"/"F") 3HEXDIG) /
+non-surrogate       = ((DIGIT / "A" / "B" / "C" / "E" / "F") 3HEXDIG) /
                       ("D" %x30-37 2HEXDIG )
 high-surrogate      = "D" ("8"/"9"/"A"/"B") 2HEXDIG
 low-surrogate       = "D" ("C"/"D"/"E"/"F") 2HEXDIG
@@ -106,12 +104,16 @@ singular-query-segments = *(S (name-segment / index-segment))
 name-segment        = ("[" name-selector "]") /
                       ("." member-name-shorthand)
 index-segment       = "[" index-selector "]"
-number              = (int / "-0") [ frac ] [ exp ] ; decimal number
+
+number              = (int / min-zero) [ frac ] [ exp ] ; decimal number
+min-zero            = "-0"
 frac                = "." 1*DIGIT                  ; decimal fraction
 exp                 = "e" [ "-" / "+" ] 1*DIGIT    ; decimal exponent
+
 true                = %x74.72.75.65                ; true
 false               = %x66.61.6c.73.65             ; false
 null                = %x6e.75.6c.6c                ; null
+
 function-name       = function-name-first *function-name-char
 function-name-first = LCALPHA
 function-name-char  = function-name-first / "_" / DIGIT
